@@ -5,21 +5,21 @@ use std::time::Duration;
 
 struct NoCopyBool(bool);
 
-pub struct Reader {
+pub struct SafeReader {
     inner: Arc<NoCopyBool>,
 }
 
-pub struct Writer {
+pub struct SafeWriter {
     inner: Arc<NoCopyBool>,
 }
 
-impl Reader {
+impl SafeReader {
     pub fn read(&self) -> bool {
         self.inner.deref().0
     }
 }
 
-impl Writer {
+impl SafeWriter {
     pub fn write(&mut self, value: bool) {
         unsafe {
             // 1. Get the raw const pointer to the inner data
@@ -46,13 +46,13 @@ impl Writer {
     }
 }
 
-pub fn boolean_srsw() -> (Reader, Writer) {
+pub fn safe_boolean_srsw() -> (SafeReader, SafeWriter) {
     let inner = Arc::new(NoCopyBool(false));
 
     (
-        Reader {
+        SafeReader {
             inner: inner.clone(),
         },
-        Writer { inner },
+        SafeWriter { inner },
     )
 }
