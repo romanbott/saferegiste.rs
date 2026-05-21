@@ -50,11 +50,9 @@ impl MRegularMRSW {
         // Write first, so theres always at least one `true` in the array
         self.inner[value].write(true);
 
-        // Now set all the other entries to `false`
-        for (n, reg) in self.inner.iter_mut().enumerate().rev() {
-            if n != value {
-                reg.write(false);
-            }
+        // Now set all the "downstream" entries to `false`
+        for reg in self.inner[..value].iter_mut().rev() {
+            reg.write(false);
         }
         Ok(())
     }
