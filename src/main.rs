@@ -14,9 +14,13 @@ use ratatui::{
 use std::{
     error::Error,
     io,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, Sender},
+    },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 mod atomic_mrsw;
@@ -52,13 +56,16 @@ struct App {
     list_state: ListState,
     rx: Option<Receiver<SimEvent>>,
 
-    // Track logs instead of single values
     writer_logs: Vec<String>,
     reader_logs: Vec<Vec<String>>,
     status_msg: String,
 
     num_readers: usize,
     delay_ms: u64,
+
+    // Pause state tracking
+    is_paused: bool,
+    pause_flag: Option<Arc<AtomicBool>>,
 }
 
 impl App {
@@ -80,6 +87,8 @@ impl App {
             status_msg: String::new(),
             num_readers: 3,
             delay_ms: 500,
+            is_paused: false,
+            pause_flag: None,
         }
     }
 
@@ -115,7 +124,11 @@ impl App {
         self.state = AppState::Running;
         self.writer_logs.clear();
         self.reader_logs = vec![Vec::new(); self.num_readers];
-        self.status_msg = String::from("Running simulation...");
+        self.status_msg = String::from("Simulation RUNNING");
+        self.is_paused = false;
+
+        let pause_flag = Arc::new(AtomicBool::new(false));
+        self.pause_flag = Some(pause_flag.clone());
 
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
@@ -125,15 +138,49 @@ impl App {
         let delay = self.delay_ms;
 
         thread::spawn(move || {
-            run_simulation(selected, num_readers, delay, tx);
+            run_simulation(selected, num_readers, delay, tx, pause_flag);
         });
+    }
+}
+
+// -------------------------------------------------------------------------
+// Smart Sleep Function
+// -------------------------------------------------------------------------
+// Checks the pause flag continually so it can freeze instantly
+// instead of waiting for a long sleep to expire.
+fn smart_sleep(delay_ms: u64, pause_flag: &Arc<AtomicBool>) {
+    let target = Duration::from_millis(delay_ms);
+    let start = Instant::now();
+
+    loop {
+        // If paused, just trap the thread here checking every 50ms
+        while pause_flag.load(Ordering::Relaxed) {
+            thread::sleep(Duration::from_millis(50));
+        }
+
+        // If the unpaused time has elapsed, we are done
+        if start.elapsed() >= target {
+            break;
+        }
+
+        // Sleep in tiny increments to remain responsive
+        thread::sleep(Duration::from_millis(10));
     }
 }
 
 // -------------------------------------------------------------------------
 // Simulation Runner
 // -------------------------------------------------------------------------
-fn run_simulation(reg_type: RegisterType, num_readers: usize, delay_ms: u64, tx: Sender<SimEvent>) {
+// -------------------------------------------------------------------------
+// Simulation Runner
+// -------------------------------------------------------------------------
+fn run_simulation(
+    reg_type: RegisterType,
+    num_readers: usize,
+    delay_ms: u64,
+    tx: Sender<SimEvent>,
+    pause_flag: Arc<AtomicBool>,
+) {
     match reg_type {
         RegisterType::Safe => {
             let mut safe_reg = safe_mrsw::SafeMRSW::new(num_readers);
@@ -144,35 +191,56 @@ fn run_simulation(reg_type: RegisterType, num_readers: usize, delay_ms: u64, tx:
 
             let tx_writer = tx.clone();
             let writer_delay = delay_ms;
+            let writer_pause = pause_flag.clone();
+
             thread::spawn(move || {
                 let mut current_val = false;
                 for _ in 1..=10 {
+                    smart_sleep(0, &writer_pause);
+
                     current_val = !current_val;
-                    tx_writer
+
+                    // If the channel is closed (user pressed Esc), exit the thread silently
+                    if tx_writer
                         .send(SimEvent::WriterUpdate(format!("Writing: {}", current_val)))
-                        .unwrap();
+                        .is_err()
+                    {
+                        return;
+                    }
+
                     safe_reg.write(current_val);
-                    tx_writer
+
+                    if tx_writer
                         .send(SimEvent::WriterUpdate(format!("Idle: {}", current_val)))
-                        .unwrap();
-                    thread::sleep(Duration::from_millis(writer_delay));
+                        .is_err()
+                    {
+                        return;
+                    }
+
+                    smart_sleep(writer_delay, &writer_pause);
                 }
-                tx_writer
-                    .send(SimEvent::Status("Simulation Finished.".to_string()))
-                    .unwrap();
+                let _ = tx_writer.send(SimEvent::Status("Simulation FINISHED".to_string()));
             });
 
             for (id, reader) in readers.into_iter().enumerate() {
                 let tx_reader = tx.clone();
-                let reader_delay = delay_ms / 10;
+                let reader_delay = delay_ms;
+                let reader_pause = pause_flag.clone();
+
                 thread::spawn(move || {
-                    // thread::sleep(Duration::from_millis(100));
-                    for _ in 1..=200 {
+                    smart_sleep(100, &reader_pause);
+                    for _ in 1..=15 {
                         let value = reader.read();
-                        tx_reader
+
+                        // If the channel is closed, exit the thread silently
+                        if tx_reader
                             .send(SimEvent::ReaderUpdate(id, format!("{}", value)))
-                            .unwrap();
-                        thread::sleep(Duration::from_millis(reader_delay));
+                            .is_err()
+                        {
+                            return;
+                        }
+
+                        smart_sleep(reader_delay / 2 + 50, &reader_pause);
                     }
                 });
             }
@@ -185,39 +253,52 @@ fn run_simulation(reg_type: RegisterType, num_readers: usize, delay_ms: u64, tx:
             }
 
             let tx_writer = tx.clone();
+            let writer_pause = pause_flag.clone();
             thread::spawn(move || {
                 for i in 1..=10 {
-                    tx_writer
+                    smart_sleep(0, &writer_pause);
+
+                    if tx_writer
                         .send(SimEvent::WriterUpdate(format!("Writing: {}", i)))
-                        .unwrap();
+                        .is_err()
+                    {
+                        return;
+                    }
                     let _ = mrsw.write(i);
-                    tx_writer
+                    if tx_writer
                         .send(SimEvent::WriterUpdate(format!("Idle: {}", i)))
-                        .unwrap();
-                    thread::sleep(Duration::from_millis(delay_ms));
+                        .is_err()
+                    {
+                        return;
+                    }
+
+                    smart_sleep(delay_ms, &writer_pause);
                 }
-                tx_writer
-                    .send(SimEvent::Status("Simulation Finished.".to_string()))
-                    .unwrap();
+                let _ = tx_writer.send(SimEvent::Status("Simulation FINISHED".to_string()));
             });
 
             for (id, reader) in readers.into_iter().enumerate() {
                 let tx_reader = tx.clone();
+                let reader_pause = pause_flag.clone();
                 thread::spawn(move || {
-                    thread::sleep(Duration::from_millis(100));
+                    smart_sleep(100, &reader_pause);
                     for _ in 1..=10 {
                         let value = reader.read();
-                        tx_reader
+
+                        if tx_reader
                             .send(SimEvent::ReaderUpdate(id, format!("{}", value)))
-                            .unwrap();
-                        thread::sleep(Duration::from_millis(delay_ms + 100));
+                            .is_err()
+                        {
+                            return;
+                        }
+
+                        smart_sleep(delay_ms + 100, &reader_pause);
                     }
                 });
             }
         }
         _ => {
-            tx.send(SimEvent::Status("Pending integration.".to_string()))
-                .unwrap();
+            let _ = tx.send(SimEvent::Status("Pending integration.".to_string()));
         }
     }
 }
@@ -260,7 +341,6 @@ where
                 match event {
                     SimEvent::WriterUpdate(val) => {
                         app.writer_logs.push(val);
-                        // Cap history to prevent memory/UI issues
                         if app.writer_logs.len() > 100 {
                             app.writer_logs.remove(0);
                         }
@@ -300,6 +380,27 @@ where
                         KeyCode::Char('q') | KeyCode::Esc => {
                             app.state = AppState::Menu;
                             app.rx = None;
+
+                            // Unpause strictly to allow threads to close out naturally
+                            // if they are sleeping (prevents orphaned paused threads)
+                            if let Some(flag) = &app.pause_flag {
+                                flag.store(false, Ordering::SeqCst);
+                            }
+                        }
+                        // Handle Pause/Play Hotkeys
+                        KeyCode::Char('p') | KeyCode::Char(' ') => {
+                            app.is_paused = !app.is_paused;
+                            if let Some(flag) = &app.pause_flag {
+                                flag.store(app.is_paused, Ordering::SeqCst);
+                            }
+
+                            if !app.status_msg.contains("FINISHED") {
+                                app.status_msg = if app.is_paused {
+                                    "Simulation PAUSED".to_string()
+                                } else {
+                                    "Simulation RUNNING".to_string()
+                                };
+                            }
                         }
                         _ => {}
                     },
@@ -316,7 +417,7 @@ fn ui(f: &mut ratatui::Frame, app: &mut App) {
                 .direction(Direction::Vertical)
                 .margin(2)
                 .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
-                .split(f.area());
+                .split(f.size());
 
             let title = Paragraph::new(format!(
                 "Select Register | Readers: {} (Left/Right to change) | 'q' to quit",
@@ -358,23 +459,33 @@ fn ui(f: &mut ratatui::Frame, app: &mut App) {
                 .constraints(
                     [
                         Constraint::Length(3),  // Status
-                        Constraint::Length(10), // Writer Pane (taller for history)
+                        Constraint::Length(10), // Writer Pane
                         Constraint::Min(0),     // Readers Panes Area
                     ]
                     .as_ref(),
                 )
-                .split(f.area());
+                .split(f.size());
 
-            // 1. Status Bar
-            let status =
-                Paragraph::new(format!("{} | Press 'q' or 'Esc' to return", app.status_msg)).block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Simulation Status"),
-                );
+            // 1. Status Bar (Dynamic color based on pause state)
+            let status_style = if app.is_paused {
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::Green)
+            };
+
+            let status = Paragraph::new(format!(
+                "{} | Press 'p' or Space to Pause/Play | 'q' or 'Esc' to return",
+                app.status_msg
+            ))
+            .style(status_style)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Simulation Status"),
+            );
             f.render_widget(status, main_chunks[0]);
 
-            // 2. Writer Pane (Rendered in reverse so newest is at the top)
+            // 2. Writer Pane
             let writer_items: Vec<ListItem> = app
                 .writer_logs
                 .iter()
@@ -404,7 +515,6 @@ fn ui(f: &mut ratatui::Frame, app: &mut App) {
                 .split(main_chunks[2]);
 
             for (i, logs) in app.reader_logs.iter().enumerate() {
-                // Rendered in reverse so newest is at the top
                 let reader_items: Vec<ListItem> = logs
                     .iter()
                     .rev()
