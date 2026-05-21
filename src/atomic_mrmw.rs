@@ -9,7 +9,7 @@ pub struct AtomicMRMWReaderWriter {
 }
 
 impl AtomicMRMWReaderWriter {
-    fn read(&mut self) -> u8 {
+    pub fn read(&mut self) -> u8 {
         let most_recent = self
             .readers
             .iter_mut()
@@ -23,12 +23,12 @@ impl AtomicMRMWReaderWriter {
         most_recent.value()
     }
 
-    fn write(&mut self, value: u8) {
+    pub fn write(&mut self, value: u8) {
         let most_recent_stamp = self
             .readers
             .iter_mut()
             .map(|srsw_reader| {
-                let stamped_val: StampedValue<u8, 4> = srsw_reader.read().into();
+                let stamped_val: StampedValue<u8, 3> = srsw_reader.read().into();
                 stamped_val.stamp()
             })
             .max()
@@ -45,7 +45,7 @@ pub struct AtomicMRMW {
 }
 
 impl AtomicMRMW {
-    fn new(capacity: usize) -> AtomicMRMW {
+    pub fn new(capacity: usize) -> AtomicMRMW {
         let mut mrsws = Vec::new();
 
         for _ in 0..capacity {

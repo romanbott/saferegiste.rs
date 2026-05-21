@@ -49,7 +49,7 @@ impl AtomicMRSWReader {
             .column
             .iter_mut()
             .map(|srsw_reader| {
-                let stamped_val: StampedValue<u8, 4> = srsw_reader.read().into();
+                let stamped_val: StampedValue<u8, 5> = srsw_reader.read().into();
                 stamped_val
             })
             .max_by_key(|stamped_val| stamped_val.stamp())
@@ -138,7 +138,7 @@ impl AtomicMRSW {
 
     pub fn write(&mut self, value: u8) {
         self.last_stamp += 1;
-        let stamped_value: StampedValue<u8, 4> = (self.last_stamp, value).into();
+        let stamped_value: StampedValue<u8, 5> = (self.last_stamp, value).into();
         self.diagonal
             .iter_mut()
             .for_each(|d| d.write(stamped_value.into_u8()));
