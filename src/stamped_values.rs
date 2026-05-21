@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, PartialOrd, Clone, Copy)]
 pub struct StampedValue<T, const VALUE_BITS: usize> {
     inner: T,
 }
@@ -23,12 +23,6 @@ impl<const VALUE_BITS: usize> From<(u8, u8)> for StampedValue<u8, VALUE_BITS> {
         StampedValue {
             inner: (stamp << VALUE_BITS) | value,
         }
-    }
-}
-
-impl<const VALUE_BITS: usize> PartialOrd for StampedValue<u8, VALUE_BITS> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.stamp().partial_cmp(&other.stamp())
     }
 }
 
@@ -71,12 +65,6 @@ impl<const VALUE_BITS: usize> From<(u16, u16)> for StampedValue<u16, VALUE_BITS>
         StampedValue {
             inner: (stamp << VALUE_BITS) | value,
         }
-    }
-}
-
-impl<const VALUE_BITS: usize> PartialOrd for StampedValue<u16, VALUE_BITS> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.stamp().partial_cmp(&other.stamp())
     }
 }
 
