@@ -11,11 +11,11 @@ impl AtomicSRSWReader {
     pub fn read(&mut self) -> u8 {
         let value: StampedValue<u16, 8> = (self.inner.read() as u16).into();
 
-        if &value >= &self.last_read {
+        if value >= self.last_read {
             self.last_read.update(&value);
-            return value.value() as u8;
+            value.value() as u8
         } else {
-            return self.last_read.value() as u8;
+            self.last_read.value() as u8
         }
     }
 }
