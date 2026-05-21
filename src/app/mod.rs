@@ -9,6 +9,7 @@ use std::{
 
 use crossterm::event::KeyCode;
 use ratatui::widgets::ListState;
+use registers::safe_registers::FLICKER_MODE;
 
 mod simulation;
 pub mod ui;
@@ -47,6 +48,7 @@ pub struct App {
     pub num_reads: usize,
     pub writer_delay_ms: u64,
     pub reader_delay_ms: u64,
+    pub flicker_mode: u8, // 0: Fast, 1: Normal, 2: Slow
 
     pub is_paused: bool,
     pub pause_flag: Option<Arc<AtomicBool>>,
@@ -56,6 +58,10 @@ impl App {
     pub fn new() -> App {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
+
+        // Ensure the global config matches our default state
+        FLICKER_MODE.store(1, Ordering::Relaxed);
+
         App {
             state: AppState::Menu,
             items: vec![
@@ -71,8 +77,9 @@ impl App {
             status_msg: String::new(),
             num_readers: 3,
             num_reads: 100,
-            writer_delay_ms: 500,
+            writer_delay_ms: 1000,
             reader_delay_ms: 50,
+            flicker_mode: 1, // Default to Normal
             is_paused: false,
             pause_flag: None,
         }
@@ -135,6 +142,13 @@ impl App {
                     }
                 }
                 KeyCode::Char('R') => self.reader_delay_ms += 100,
+
+                // Hotkey for Flicker Mode
+                KeyCode::Char('f') | KeyCode::Char('F') => {
+                    self.flicker_mode = (self.flicker_mode + 1) % 3;
+                    // Update global config instantly
+                    FLICKER_MODE.store(self.flicker_mode, Ordering::Relaxed);
+                }
                 _ => {}
             },
             AppState::Running => match key {

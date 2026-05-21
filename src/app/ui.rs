@@ -16,17 +16,24 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .margin(2)
-                // Increased Length to 7 to fit our new parameter controls
-                .constraints([Constraint::Length(7), Constraint::Min(0)].as_ref())
+                // Increased to Length(8) to fit the Flicker Mode text
+                .constraints([Constraint::Length(8), Constraint::Min(0)].as_ref())
                 .split(f.size());
+
+            let mode_str = match app.flicker_mode {
+                0 => "Fast",
+                1 => "Normal",
+                _ => "Slow",
+            };
 
             let menu_text = format!(
                 "Select Register | Enter to Start | 'q' to quit\n\
                  Readers       (Left/Right): {}\n\
                  Reads per run   ('n'/'N') : {}\n\
                  Writer Delay    ('w'/'W') : {}ms\n\
-                 Reader Delay    ('r'/'R') : {}ms",
-                app.num_readers, app.num_reads, app.writer_delay_ms, app.reader_delay_ms
+                 Reader Delay    ('r'/'R') : {}ms\n\
+                 Flicker Mode      ('f')   : {}",
+                app.num_readers, app.num_reads, app.writer_delay_ms, app.reader_delay_ms, mode_str
             );
 
             let title = Paragraph::new(menu_text).block(

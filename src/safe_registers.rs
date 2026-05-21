@@ -1,7 +1,10 @@
 use std::ops::Deref;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::thread;
 use std::time::Duration;
+
+pub static FLICKER_MODE: AtomicU8 = AtomicU8::new(1); // Default to Normal
 
 struct NoCopyBool(bool);
 
@@ -21,6 +24,13 @@ impl SafeReader {
 
 impl SafeWriter {
     pub fn write(&mut self, value: bool) {
+        let mode = FLICKER_MODE.load(Ordering::Relaxed);
+        let (iters, sleep) = match mode {
+            0 => (2..=5, 1..=5),    // Fast
+            1 => (5..=10, 5..=25),  // Normal
+            _ => (5..=10, 10..=50), // Slow
+        };
+
         unsafe {
             // 1. Get the raw const pointer to the inner data
             let const_ptr = Arc::as_ptr(&self.inner);
@@ -30,11 +40,11 @@ impl SafeWriter {
 
             // 3. Dereference and mutate
 
-            let iterations = rand::random_range(5..=10);
+            let iterations = rand::random_range(iters);
 
             for _ in 0..iterations {
                 // 2. Generate a random sleep duration in milliseconds (e.g., 100ms to 500ms)
-                let sleep_time_ms = rand::random_range(10..=50);
+                let sleep_time_ms = rand::random_range(sleep.clone());
 
                 thread::sleep(Duration::from_millis(sleep_time_ms));
 
