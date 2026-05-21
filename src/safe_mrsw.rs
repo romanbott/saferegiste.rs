@@ -28,33 +28,33 @@ impl SafeMRSW {
     }
 }
 
-fn main2() {
-    let (r, mut w) = safe_boolean_srsw();
-
-    let producer = thread::spawn(move || {
-        let mut value = false;
-
-        for _ in 1..=10 {
-            println!("---> {}", value);
-            w.write(value);
-            value = !value;
-            thread::sleep(Duration::from_millis(1000));
-        }
-    });
-
-    // Spawn the consumer thread
-    let consumer = thread::spawn(move || {
-        thread::sleep(Duration::from_millis(100));
-        for _ in 1..=10 {
-            let value = r.read();
-            println!("{} <---", value);
-            thread::sleep(Duration::from_millis(1000));
-        }
-    });
-
-    // Wait for both threads to complete their execution
-    producer.join().unwrap();
-    consumer.join().unwrap();
-
-    println!("All messages sent and received!");
-}
+// fn main2() {
+//     let (r, mut w) = safe_boolean_srsw();
+//
+//     let producer = thread::spawn(move || {
+//         let mut value = false;
+//
+//         for _ in 1..=10 {
+//             println!("---> {}", value);
+//             w.write(value);
+//             value = !value;
+//             thread::sleep(Duration::from_millis(1000));
+//         }
+//     });
+//
+//     // Spawn the consumer thread
+//     let consumer = thread::spawn(move || {
+//         thread::sleep(Duration::from_millis(100));
+//         for _ in 1..=10 {
+//             let value = r.read();
+//             println!("{} <---", value);
+//             thread::sleep(Duration::from_millis(1000));
+//         }
+//     });
+//
+//     // Wait for both threads to complete their execution
+//     producer.join().unwrap();
+//     consumer.join().unwrap();
+//
+//     println!("All messages sent and received!");
+// }

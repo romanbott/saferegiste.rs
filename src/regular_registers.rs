@@ -58,46 +58,46 @@ impl RegularMRSW {
     }
 }
 
-fn main_1() {
-    let mut mrsw = RegularMRSW::new(2);
-
-    let first_reader = mrsw.get_nth_reader(0).unwrap();
-    let second_reader = mrsw.get_nth_reader(1).unwrap();
-
-    let producer = thread::spawn(move || {
-        let mut value = false;
-
-        for _ in 1..=10 {
-            println!("---> {}", value);
-            mrsw.write(value);
-            // value = !value;
-            thread::sleep(Duration::from_millis(1000));
-        }
-    });
-
-    // Spawn the consumer thread
-    let first_consumer = thread::spawn(move || {
-        thread::sleep(Duration::from_millis(100));
-        for _ in 1..=10 {
-            let value = first_reader.read();
-            println!("{} <--1", value);
-            thread::sleep(Duration::from_millis(1000));
-        }
-    });
-
-    let second_consumer = thread::spawn(move || {
-        thread::sleep(Duration::from_millis(200));
-        for _ in 1..=10 {
-            let value = second_reader.read();
-            println!("{} <--2", value);
-            thread::sleep(Duration::from_millis(1000));
-        }
-    });
-
-    // Wait for both threads to complete their execution
-    producer.join().unwrap();
-    first_consumer.join().unwrap();
-    second_consumer.join().unwrap();
-
-    println!("All messages sent and received!");
-}
+// fn main_1() {
+//     let mut mrsw = RegularMRSW::new(2);
+//
+//     let first_reader = mrsw.get_nth_reader(0).unwrap();
+//     let second_reader = mrsw.get_nth_reader(1).unwrap();
+//
+//     let producer = thread::spawn(move || {
+//         let mut value = false;
+//
+//         for _ in 1..=10 {
+//             println!("---> {}", value);
+//             mrsw.write(value);
+//             // value = !value;
+//             thread::sleep(Duration::from_millis(1000));
+//         }
+//     });
+//
+//     // Spawn the consumer thread
+//     let first_consumer = thread::spawn(move || {
+//         thread::sleep(Duration::from_millis(100));
+//         for _ in 1..=10 {
+//             let value = first_reader.read();
+//             println!("{} <--1", value);
+//             thread::sleep(Duration::from_millis(1000));
+//         }
+//     });
+//
+//     let second_consumer = thread::spawn(move || {
+//         thread::sleep(Duration::from_millis(200));
+//         for _ in 1..=10 {
+//             let value = second_reader.read();
+//             println!("{} <--2", value);
+//             thread::sleep(Duration::from_millis(1000));
+//         }
+//     });
+//
+//     // Wait for both threads to complete their execution
+//     producer.join().unwrap();
+//     first_consumer.join().unwrap();
+//     second_consumer.join().unwrap();
+//
+//     println!("All messages sent and received!");
+// }

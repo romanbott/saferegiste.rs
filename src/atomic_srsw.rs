@@ -55,33 +55,33 @@ pub fn new() -> (AtomicSRSWReader, AtomicSRSWWriter) {
     )
 }
 
-fn main() {
-    let (mut r, mut w) = atomic_srsw();
-
-    let producer = thread::spawn(move || {
-        for i in 1..=7 {
-            println!("---> {}", i);
-            w.write(i);
-            thread::sleep(Duration::from_millis(500));
-        }
-    });
-
-    // Spawn the consumer thread
-    let consumer = thread::spawn(move || {
-        thread::sleep(Duration::from_millis(100));
-        loop {
-            let value = r.read();
-            println!("{} <--1", value);
-            thread::sleep(Duration::from_millis(100));
-            if value == 7 {
-                break;
-            }
-        }
-    });
-
-    // Wait for both threads to complete their execution
-    producer.join().unwrap();
-    consumer.join().unwrap();
-
-    println!("All messages sent and received!");
-}
+// fn main() {
+//     let (mut r, mut w) = atomic_srsw();
+//
+//     let producer = thread::spawn(move || {
+//         for i in 1..=7 {
+//             println!("---> {}", i);
+//             w.write(i);
+//             thread::sleep(Duration::from_millis(500));
+//         }
+//     });
+//
+//     // Spawn the consumer thread
+//     let consumer = thread::spawn(move || {
+//         thread::sleep(Duration::from_millis(100));
+//         loop {
+//             let value = r.read();
+//             println!("{} <--1", value);
+//             thread::sleep(Duration::from_millis(100));
+//             if value == 7 {
+//                 break;
+//             }
+//         }
+//     });
+//
+//     // Wait for both threads to complete their execution
+//     producer.join().unwrap();
+//     consumer.join().unwrap();
+//
+//     println!("All messages sent and received!");
+// }
