@@ -33,6 +33,7 @@ enum RegisterType {
     Regular,
     MRegular,
     AtomicSRSW,
+    AtomicMRSW,
 }
 
 impl RegisterType {
@@ -100,6 +101,7 @@ impl App {
                 RegisterType::Regular,
                 RegisterType::MRegular,
                 RegisterType::AtomicSRSW,
+                RegisterType::AtomicMRSW,
             ],
             list_state,
             rx: None,

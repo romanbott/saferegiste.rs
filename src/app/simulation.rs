@@ -11,7 +11,9 @@ use std::{
 use crate::app::{BOOLEAN_SEQUENCES, NUMERIC_SEQUENCES, RegisterType, SimEvent};
 
 // Import the registers from your own library
-use registers::{atomic_srsw, m_regular, safe_mrsw, safe_registers::safe_boolean_srsw};
+use registers::{
+    atomic_mrsw, atomic_srsw, m_regular, safe_mrsw, safe_registers::safe_boolean_srsw,
+};
 
 pub fn smart_sleep(delay_ms: u64, pause_flag: &Arc<AtomicBool>) {
     let target = Duration::from_millis(delay_ms);
@@ -77,6 +79,15 @@ pub fn run_simulation(
             pause_flag,
         ),
         RegisterType::AtomicSRSW => simulate_atomic_srsw(
+            num_reads,
+            writer_delay_ms,
+            reader_delay_ms,
+            seq_idx,
+            tx,
+            pause_flag,
+        ),
+        RegisterType::AtomicMRSW => simulate_atomic_mrsw(
+            num_readers,
             num_reads,
             writer_delay_ms,
             reader_delay_ms,
@@ -392,4 +403,68 @@ fn simulate_atomic_srsw(
             smart_sleep(reader_delay_ms, &reader_pause);
         }
     });
+}
+
+fn simulate_atomic_mrsw(
+    num_readers: usize,
+    num_reads: usize,
+    writer_delay_ms: u64,
+    reader_delay_ms: u64,
+    seq_idx: usize,
+    tx: Sender<SimEvent>,
+    pause_flag: Arc<AtomicBool>,
+) {
+    // We set m = 16 because values 0..=15 require 16 underlying binary safe registers
+    let mut mrsw = atomic_mrsw::AtomicMRSW::new(num_readers);
+    let mut readers = vec![];
+    for i in 0..num_readers {
+        readers.push(mrsw.get_nth_reader(i).unwrap());
+    }
+
+    let tx_writer = tx.clone();
+    let writer_pause = pause_flag.clone();
+
+    let sequence = NUMERIC_SEQUENCES[seq_idx].to_vec();
+
+    thread::spawn(move || {
+        for i in sequence.into_iter().cycle() {
+            smart_sleep(0, &writer_pause);
+
+            if tx_writer
+                .send(SimEvent::WriterUpdate(format!("Writing: {}", i)))
+                .is_err()
+            {
+                return;
+            }
+            let _ = mrsw.write(i as u8);
+            if tx_writer
+                .send(SimEvent::WriterUpdate(format!("Idle: {}", i)))
+                .is_err()
+            {
+                return;
+            }
+
+            smart_sleep(writer_delay_ms, &writer_pause);
+        }
+        let _ = tx_writer.send(SimEvent::Status("Simulation FINISHED".to_string()));
+    });
+
+    // Reader Threads
+    for (id, mut reader) in readers.into_iter().enumerate() {
+        let tx_reader = tx.clone();
+        let reader_pause = pause_flag.clone();
+        thread::spawn(move || {
+            smart_sleep(100, &reader_pause); // Stagger start slightly
+            for _ in 1..=num_reads {
+                let value = reader.read();
+                if tx_reader
+                    .send(SimEvent::ReaderUpdate(id, format!("{}", value)))
+                    .is_err()
+                {
+                    return;
+                }
+                smart_sleep(reader_delay_ms, &reader_pause);
+            }
+        });
+    }
 }

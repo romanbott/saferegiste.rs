@@ -3,7 +3,7 @@ use crate::{
     stamped_values::StampedValue,
 };
 
-struct AtomicMRSWReader {
+pub struct AtomicMRSWReader {
     column: Vec<AtomicSRSWReader>,
     row: Vec<Option<AtomicSRSWWriter>>,
 }
@@ -44,7 +44,7 @@ struct AtomicMRSWReader {
 // }
 
 impl AtomicMRSWReader {
-    fn read(&mut self) -> u8 {
+    pub fn read(&mut self) -> u8 {
         let most_recent = self
             .column
             .iter_mut()
@@ -65,14 +65,14 @@ impl AtomicMRSWReader {
     }
 }
 
-struct AtomicMRSW {
+pub struct AtomicMRSW {
     last_stamp: u8,
     readers: Vec<Option<AtomicMRSWReader>>,
     diagonal: Vec<AtomicSRSWWriter>,
 }
 
 impl AtomicMRSW {
-    fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         // For clarity, first build the matrix of atomic SRSW registers
         let mut matrix = Vec::with_capacity(capacity);
         for _ in 0..capacity {
@@ -123,7 +123,7 @@ impl AtomicMRSW {
         }
     }
 
-    fn get_nth_reader(&mut self, n: usize) -> Option<AtomicMRSWReader> {
+    pub fn get_nth_reader(&mut self, n: usize) -> Option<AtomicMRSWReader> {
         self.readers.get_mut(n).and_then(Option::take)
     }
 
@@ -136,7 +136,7 @@ impl AtomicMRSW {
     // 		}
     // 	}
 
-    fn write(&mut self, value: u8) {
+    pub fn write(&mut self, value: u8) {
         self.last_stamp += 1;
         let stamped_value: StampedValue<u8, 4> = (self.last_stamp, value).into();
         self.diagonal

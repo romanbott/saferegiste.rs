@@ -65,6 +65,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                         RegisterType::Regular => "Regular Boolean MRSW",
                         RegisterType::MRegular => "M-Valued Regular MRSW",
                         RegisterType::AtomicSRSW => "Atomic SRSW",
+                        RegisterType::AtomicMRSW => "Atomic MRSW",
                     };
                     ListItem::new(Line::from(Span::raw(name)))
                 })
