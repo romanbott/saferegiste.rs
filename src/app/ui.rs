@@ -18,7 +18,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                 .margin(2)
                 // Increased to Length(8) to fit the Flicker Mode text
                 .constraints([Constraint::Length(8), Constraint::Min(0)].as_ref())
-                .split(f.size());
+                .split(f.area());
 
             let mode_str = match app.flicker_mode {
                 0 => "Fast",
@@ -48,8 +48,9 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                 .iter()
                 .map(|i| {
                     let name = match i {
-                        RegisterType::Safe => "Safe Boolean SRSW/MRSW",
-                        RegisterType::Regular => "Regular MRSW",
+                        RegisterType::SafeSRSW => "Safe Boolean SRSW",
+                        RegisterType::SafeMRSW => "Safe Boolean SRSW",
+                        RegisterType::Regular => "Regular Boolean MRSW",
                         RegisterType::MRegular => "M-Valued Regular MRSW",
                         RegisterType::AtomicSRSW => "Atomic SRSW",
                     };
@@ -72,7 +73,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         AppState::Running => {
             let main_chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .margin(2)
+                .margin(1)
                 .constraints(
                     [
                         Constraint::Length(3),
@@ -81,7 +82,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                     ]
                     .as_ref(),
                 )
-                .split(f.size());
+                .split(f.area());
 
             let (status_style, status_text) = if app.is_paused {
                 (

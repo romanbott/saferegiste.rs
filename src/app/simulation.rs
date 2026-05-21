@@ -11,7 +11,7 @@ use std::{
 use crate::app::{RegisterType, SimEvent};
 
 // Import the registers from your own library
-use registers::{m_regular, safe_mrsw};
+use registers::{m_regular, safe_mrsw, safe_registers::safe_boolean_srsw};
 
 pub fn smart_sleep(delay_ms: u64, pause_flag: &Arc<AtomicBool>) {
     let target = Duration::from_millis(delay_ms);
@@ -38,7 +38,56 @@ pub fn run_simulation(
     pause_flag: Arc<AtomicBool>,
 ) {
     match reg_type {
-        RegisterType::Safe => {
+        RegisterType::SafeSRSW => {
+            let (reader, mut writer) = safe_boolean_srsw();
+
+            let tx_writer = tx.clone();
+            let writer_pause = pause_flag.clone();
+
+            thread::spawn(move || {
+                let mut current_val = false;
+                for _ in 1..=10 {
+                    smart_sleep(0, &writer_pause);
+                    current_val = !current_val;
+
+                    if tx_writer
+                        .send(SimEvent::WriterUpdate(format!("Writing: {}", current_val)))
+                        .is_err()
+                    {
+                        return;
+                    }
+                    writer.write(current_val);
+                    if tx_writer
+                        .send(SimEvent::WriterUpdate(format!("Idle: {}", current_val)))
+                        .is_err()
+                    {
+                        return;
+                    }
+
+                    smart_sleep(writer_delay_ms, &writer_pause);
+                }
+                let _ = tx_writer.send(SimEvent::Status("Simulation FINISHED".to_string()));
+            });
+
+            let tx_reader = tx.clone();
+            let reader_pause = pause_flag.clone();
+
+            thread::spawn(move || {
+                smart_sleep(100, &reader_pause);
+                for _ in 1..=num_reads {
+                    let value = reader.read();
+                    if tx_reader
+                        .send(SimEvent::ReaderUpdate(0, format!("{}", value)))
+                        .is_err()
+                    {
+                        return;
+                    }
+                    smart_sleep(reader_delay_ms, &reader_pause);
+                }
+            });
+        }
+
+        RegisterType::SafeMRSW => {
             let mut safe_reg = safe_mrsw::SafeMRSW::new(num_readers);
             let mut readers = vec![];
             for i in 0..num_readers {

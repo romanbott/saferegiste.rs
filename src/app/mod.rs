@@ -28,7 +28,8 @@ enum AppState {
 
 #[derive(Clone, Copy)]
 enum RegisterType {
-    Safe,
+    SafeSRSW,
+    SafeMRSW,
     Regular,
     MRegular,
     AtomicSRSW,
@@ -69,7 +70,8 @@ impl App {
         App {
             state: AppState::Menu,
             items: vec![
-                RegisterType::Safe,
+                RegisterType::SafeSRSW,
+                RegisterType::SafeMRSW,
                 RegisterType::Regular,
                 RegisterType::MRegular,
                 RegisterType::AtomicSRSW,
