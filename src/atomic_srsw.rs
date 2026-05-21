@@ -11,7 +11,9 @@ impl AtomicSRSWReader {
     pub fn read(&mut self) -> u8 {
         let value: StampedValue<u16, 8> = (self.inner.read() as u16).into();
 
-        if value >= self.last_read {
+        // dbg!(value.stamp(), value.value());
+
+        if value.stamp() >= self.last_read.stamp() {
             self.last_read.update(&value);
             value.value() as u8
         } else {
@@ -32,7 +34,7 @@ impl AtomicSRSWWriter {
         let stamped_value: StampedValue<u16, 8> = (new_stamp, value as u16).into();
 
         self.inner
-            .write(stamped_value.value() as usize)
+            .write(stamped_value.to_u16() as usize)
             .expect("Couldn write stamped byte.");
         self.last_stamp = new_stamp;
     }
