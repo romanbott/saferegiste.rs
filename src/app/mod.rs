@@ -52,6 +52,7 @@ pub struct App {
 
     pub is_paused: bool,
     pub pause_flag: Option<Arc<AtomicBool>>,
+    pub scroll_offset: usize,
 }
 
 impl App {
@@ -82,6 +83,7 @@ impl App {
             flicker_mode: 1, // Default to Normal
             is_paused: false,
             pause_flag: None,
+            scroll_offset: 0,
         }
     }
 
@@ -161,6 +163,10 @@ impl App {
                 }
                 KeyCode::Char('p') | KeyCode::Char(' ') => {
                     self.is_paused = !self.is_paused;
+                    if !self.is_paused {
+                        self.scroll_offset = 0;
+                    }
+
                     if let Some(flag) = &self.pause_flag {
                         flag.store(self.is_paused, Ordering::SeqCst);
                     }
@@ -172,6 +178,24 @@ impl App {
                         };
                     }
                 }
+                KeyCode::Down => {
+                    if self.is_paused {
+                        // Find the maximum length across all logs to prevent over-scrolling
+                        let max_reader_len =
+                            self.reader_logs.iter().map(|l| l.len()).max().unwrap_or(0);
+                        let absolute_max = max_reader_len.max(self.writer_logs.len());
+
+                        if self.scroll_offset < absolute_max.saturating_sub(1) {
+                            self.scroll_offset += 1;
+                        }
+                    }
+                }
+                KeyCode::Up => {
+                    if self.is_paused {
+                        self.scroll_offset = self.scroll_offset.saturating_sub(1);
+                    }
+                }
+
                 _ => {}
             },
         }

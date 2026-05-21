@@ -83,18 +83,25 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                 )
                 .split(f.size());
 
-            let status_style = if app.is_paused {
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+            let (status_style, status_text) = if app.is_paused {
+                (
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    format!(
+                        "{} | PAUSED: Use Up/Down arrows to scroll logs | Press 'p' to Play | 'q' to return",
+                        app.status_msg
+                    ),
+                )
             } else {
-                Style::default().fg(Color::Green)
+                (
+                    Style::default().fg(Color::Green),
+                    format!(
+                        "{} | Press 'p' or Space to Pause | 'q' or 'Esc' to return",
+                        app.status_msg
+                    ),
+                )
             };
 
-            let status = Paragraph::new(format!(
-                "{} | Press 'p' or Space to Pause/Play | 'q' or 'Esc' to return",
-                app.status_msg
-            ))
-            .style(status_style)
-            .block(
+            let status = Paragraph::new(status_text).style(status_style).block(
                 Block::default()
                     .borders(Borders::ALL)
                     .title("Simulation Status"),
@@ -105,6 +112,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                 .writer_logs
                 .iter()
                 .rev()
+                .skip(app.scroll_offset)
                 .map(|log| {
                     ListItem::new(Line::from(Span::styled(
                         log.clone(),
@@ -112,8 +120,15 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                     )))
                 })
                 .collect();
+
+            let writer_title = if app.scroll_offset > 0 {
+                format!("Writer (-{})", app.scroll_offset)
+            } else {
+                "Writer".to_string()
+            };
+
             let writer_list = List::new(writer_items)
-                .block(Block::default().borders(Borders::ALL).title("Writer"));
+                .block(Block::default().borders(Borders::ALL).title(writer_title));
             f.render_widget(writer_list, main_chunks[1]);
 
             let reader_constraints: Vec<Constraint> = (0..app.num_readers)
@@ -126,9 +141,11 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                 .split(main_chunks[2]);
 
             for (i, logs) in app.reader_logs.iter().enumerate() {
+                // UPDATED: Apply scroll_offset via .skip()
                 let reader_items: Vec<ListItem> = logs
                     .iter()
                     .rev()
+                    .skip(app.scroll_offset)
                     .map(|log| {
                         ListItem::new(Line::from(Span::styled(
                             log.clone(),
@@ -137,11 +154,14 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                     })
                     .collect();
 
-                let reader_list = List::new(reader_items).block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(format!("Reader {}", i)),
-                );
+                let reader_title = if app.scroll_offset > 0 {
+                    format!("Reader {} (-{})", i, app.scroll_offset)
+                } else {
+                    format!("Reader {}", i)
+                };
+
+                let reader_list = List::new(reader_items)
+                    .block(Block::default().borders(Borders::ALL).title(reader_title));
 
                 f.render_widget(reader_list, reader_chunks[i]);
             }

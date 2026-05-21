@@ -101,6 +101,7 @@ impl AtomicMRSW {
     // 	}
 
     fn write(&mut self, value: u8) {
+        self.last_stamp += 1;
         self.diagonal.iter_mut().for_each(|d| d.write(value));
     }
 }
