@@ -47,10 +47,12 @@ impl MRegularMRSW {
             return Err(WriterError::MValueExceeded);
         }
 
+        // Write first, so theres always at least one `true` in the array
+        self.inner[value].write(true);
+
+        // Now set all the other entries to `false`
         for (n, reg) in self.inner.iter_mut().enumerate().rev() {
-            if n == value {
-                reg.write(true);
-            } else {
+            if n != value {
                 reg.write(false);
             }
         }
