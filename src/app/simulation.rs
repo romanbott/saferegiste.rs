@@ -93,7 +93,8 @@ pub fn run_simulation(
             }
         }
         RegisterType::MRegular => {
-            let mut mrsw = m_regular::MRegularMRSW::new(num_readers, 11);
+            // We set m = 16 because values 0..=15 require 16 underlying binary safe registers
+            let mut mrsw = m_regular::MRegularMRSW::new(num_readers, 1 << 15);
             let mut readers = vec![];
             for i in 0..num_readers {
                 readers.push(mrsw.get_nth_reader(i).unwrap());
@@ -101,8 +102,11 @@ pub fn run_simulation(
 
             let tx_writer = tx.clone();
             let writer_pause = pause_flag.clone();
+
+            // Writer Thread
             thread::spawn(move || {
-                for i in 1..=10 {
+                for i in 0..=(1 << 8) {
+                    // Loop from 0 up to 15 inclusive
                     smart_sleep(0, &writer_pause);
 
                     if tx_writer
@@ -124,11 +128,12 @@ pub fn run_simulation(
                 let _ = tx_writer.send(SimEvent::Status("Simulation FINISHED".to_string()));
             });
 
+            // Reader Threads
             for (id, reader) in readers.into_iter().enumerate() {
                 let tx_reader = tx.clone();
                 let reader_pause = pause_flag.clone();
                 thread::spawn(move || {
-                    smart_sleep(100, &reader_pause);
+                    smart_sleep(100, &reader_pause); // Stagger start slightly
                     for _ in 1..=num_reads {
                         let value = reader.read();
                         if tx_reader

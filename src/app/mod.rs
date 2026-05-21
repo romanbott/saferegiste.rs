@@ -70,9 +70,9 @@ impl App {
             reader_logs: Vec::new(),
             status_msg: String::new(),
             num_readers: 3,
-            num_reads: 15,
+            num_reads: 100,
             writer_delay_ms: 500,
-            reader_delay_ms: 500,
+            reader_delay_ms: 50,
             is_paused: false,
             pause_flag: None,
         }
@@ -119,10 +119,10 @@ impl App {
                 }
                 KeyCode::Char('n') => {
                     if self.num_reads > 1 {
-                        self.num_reads -= 1;
+                        self.num_reads /= 2;
                     }
                 }
-                KeyCode::Char('N') => self.num_reads += 1,
+                KeyCode::Char('N') => self.num_reads *= 2,
                 KeyCode::Char('w') => {
                     if self.writer_delay_ms > 100 {
                         self.writer_delay_ms -= 100;
@@ -130,8 +130,8 @@ impl App {
                 }
                 KeyCode::Char('W') => self.writer_delay_ms += 100,
                 KeyCode::Char('r') => {
-                    if self.reader_delay_ms > 100 {
-                        self.reader_delay_ms -= 100;
+                    if self.reader_delay_ms > 1 {
+                        self.reader_delay_ms = (self.reader_delay_ms * 9) / 10;
                     }
                 }
                 KeyCode::Char('R') => self.reader_delay_ms += 100,

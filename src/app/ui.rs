@@ -105,11 +105,8 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                     )))
                 })
                 .collect();
-            let writer_list = List::new(writer_items).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Writer (Newest on top)"),
-            );
+            let writer_list = List::new(writer_items)
+                .block(Block::default().borders(Borders::ALL).title("Writer"));
             f.render_widget(writer_list, main_chunks[1]);
 
             let reader_constraints: Vec<Constraint> = (0..app.num_readers)
@@ -136,7 +133,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                 let reader_list = List::new(reader_items).block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .title(format!("Reader {} (Newest on top)", i)),
+                        .title(format!("Reader {}", i)),
                 );
 
                 f.render_widget(reader_list, reader_chunks[i]);
