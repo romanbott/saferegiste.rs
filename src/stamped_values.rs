@@ -87,4 +87,8 @@ impl<const VALUE_BITS: usize> StampedValue<u16, VALUE_BITS> {
     pub fn update(&mut self, other: &Self) {
         self.inner = other.inner;
     }
+
+    pub fn to_u16(&self) -> u16 {
+        self.inner
+    }
 }

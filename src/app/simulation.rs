@@ -11,7 +11,7 @@ use std::{
 use crate::app::{BOOLEAN_SEQUENCES, NUMERIC_SEQUENCES, RegisterType, SimEvent};
 
 // Import the registers from your own library
-use registers::{m_regular, safe_mrsw, safe_registers::safe_boolean_srsw};
+use registers::{atomic_srsw, m_regular, safe_mrsw, safe_registers::safe_boolean_srsw};
 
 pub fn smart_sleep(delay_ms: u64, pause_flag: &Arc<AtomicBool>) {
     let target = Duration::from_millis(delay_ms);
@@ -76,6 +76,15 @@ pub fn run_simulation(
             tx,
             pause_flag,
         ),
+        RegisterType::AtomicSRSW => simulate_atomic_srsw(
+            num_reads,
+            writer_delay_ms,
+            reader_delay_ms,
+            seq_idx,
+            tx,
+            pause_flag,
+        ),
+
         _ => {
             let _ = tx.send(SimEvent::Status("Pending integration.".to_string()));
         }
@@ -327,4 +336,60 @@ fn simulate_m_regular(
             }
         });
     }
+}
+
+fn simulate_atomic_srsw(
+    num_reads: usize,
+    writer_delay_ms: u64,
+    reader_delay_ms: u64,
+    seq_idx: usize,
+    tx: Sender<SimEvent>,
+    pause_flag: Arc<AtomicBool>,
+) {
+    let (mut reader, mut writer) = atomic_srsw::new();
+
+    let tx_writer = tx.clone();
+    let writer_pause = pause_flag.clone();
+
+    let sequence = NUMERIC_SEQUENCES[seq_idx].to_vec();
+
+    thread::spawn(move || {
+        for i in sequence.into_iter().cycle() {
+            smart_sleep(0, &writer_pause);
+
+            if tx_writer
+                .send(SimEvent::WriterUpdate(format!("Writing: {}", i)))
+                .is_err()
+            {
+                return;
+            }
+            let _ = writer.write(i);
+            if tx_writer
+                .send(SimEvent::WriterUpdate(format!("Idle: {}", i)))
+                .is_err()
+            {
+                return;
+            }
+
+            smart_sleep(writer_delay_ms, &writer_pause);
+        }
+        let _ = tx_writer.send(SimEvent::Status("Simulation FINISHED".to_string()));
+    });
+
+    // Reader Threads
+    let tx_reader = tx.clone();
+    let reader_pause = pause_flag.clone();
+    thread::spawn(move || {
+        smart_sleep(100, &reader_pause); // Stagger start slightly
+        for _ in 1..=num_reads {
+            let value = reader.read();
+            if tx_reader
+                .send(SimEvent::ReaderUpdate(0, format!("{}", value)))
+                .is_err()
+            {
+                return;
+            }
+            smart_sleep(reader_delay_ms, &reader_pause);
+        }
+    });
 }
