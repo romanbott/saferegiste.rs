@@ -1,3 +1,4 @@
+pub mod atomic_mrmw;
 pub mod atomic_mrsw;
 pub mod atomic_srsw;
 pub mod m_regular;
