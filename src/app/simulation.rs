@@ -12,7 +12,8 @@ use crate::app::{BOOLEAN_SEQUENCES, NUMERIC_SEQUENCES, RegisterType, SimEvent};
 
 // Import the registers from your own library
 use registers::{
-    atomic_mrsw, atomic_srsw, m_regular, safe_mrsw, safe_registers::safe_boolean_srsw,
+    atomic_mrmw::AtomicMRMW, atomic_mrsw, atomic_srsw, m_regular, safe_mrsw,
+    safe_registers::safe_boolean_srsw,
 };
 
 pub fn smart_sleep(delay_ms: u64, pause_flag: &Arc<AtomicBool>) {
@@ -87,6 +88,15 @@ pub fn run_simulation(
             pause_flag,
         ),
         RegisterType::AtomicMRSW => simulate_atomic_mrsw(
+            num_readers,
+            num_reads,
+            writer_delay_ms,
+            reader_delay_ms,
+            seq_idx,
+            tx,
+            pause_flag,
+        ),
+        RegisterType::AtomicMRMW => simulate_atomic_mrmw(
             num_readers,
             num_reads,
             writer_delay_ms,
@@ -467,4 +477,125 @@ fn simulate_atomic_mrsw(
             }
         });
     }
+}
+
+fn simulate_atomic_mrmw(
+    _num_readers: usize, // Ignored since we are using a fixed 2-reader/2-writer topology
+    num_reads: usize,
+    writer_delay_ms: u64,
+    reader_delay_ms: u64,
+    seq_idx: usize,
+    tx: Sender<SimEvent>,
+    pause_flag: Arc<AtomicBool>,
+) {
+    let writer_delay_ms = 10000.max(writer_delay_ms);
+
+    // 1. Initialize an AtomicMRMW register with a fixed capacity of 4 nodes
+    let mut mrmw = AtomicMRMW::new(4);
+
+    // 2. Extract 4 separate reader-writer handles
+    let mut writer1 = mrmw.get_nth_reader(0).expect("Writer 1 node missing");
+    let mut writer2 = mrmw.get_nth_reader(1).expect("Writer 2 node missing");
+    let mut reader1 = mrmw.get_nth_reader(2).expect("Reader 1 node missing");
+    let mut reader2 = mrmw.get_nth_reader(3).expect("Reader 2 node missing");
+
+    // Get the chosen numeric sequence from global app configurations
+    let sequence = NUMERIC_SEQUENCES[seq_idx].to_vec();
+
+    // -------------------------------------------------------------------------
+    // WRITER THREAD 1
+    // -------------------------------------------------------------------------
+    let tx_w1 = tx.clone();
+    let pause_w1 = pause_flag.clone();
+    let seq_w1 = sequence.clone(); // Clone the sequence vector for Writer 1
+    thread::spawn(move || {
+        for i in seq_w1.into_iter().cycle() {
+            smart_sleep(0, &pause_w1);
+
+            if tx_w1
+                .send(SimEvent::WriterUpdate(format!("W1 Writing: {}", i)))
+                .is_err()
+            {
+                return;
+            }
+            writer1.write(i as u8);
+            if tx_w1
+                .send(SimEvent::WriterUpdate(format!("W1 Idle: {}", i)))
+                .is_err()
+            {
+                return;
+            }
+
+            smart_sleep(writer_delay_ms, &pause_w1);
+        }
+    });
+
+    // -------------------------------------------------------------------------
+    // WRITER THREAD 2
+    // -------------------------------------------------------------------------
+    let tx_w2 = tx.clone();
+    let pause_w2 = pause_flag.clone();
+    let seq_w2 = sequence.clone(); // Clone the sequence vector for Writer 2
+    thread::spawn(move || {
+        // Stagger Writer 2 slightly so they don't overlap initial writes instantly
+        smart_sleep(writer_delay_ms / 2, &pause_w2);
+        for i in seq_w2.into_iter().cycle() {
+            let i = (i + 3) % 8;
+            smart_sleep(0, &pause_w2);
+
+            if tx_w2
+                .send(SimEvent::WriterUpdate(format!("W2 Writing: {}", i)))
+                .is_err()
+            {
+                return;
+            }
+            writer2.write(i as u8);
+            if tx_w2
+                .send(SimEvent::WriterUpdate(format!("W2 Idle: {}", i)))
+                .is_err()
+            {
+                return;
+            }
+
+            smart_sleep(writer_delay_ms, &pause_w2);
+        }
+    });
+
+    // -------------------------------------------------------------------------
+    // READER THREAD 1 (Maps to UI row index 0)
+    // -------------------------------------------------------------------------
+    let tx_r1 = tx.clone();
+    let pause_r1 = pause_flag.clone();
+    thread::spawn(move || {
+        smart_sleep(100, &pause_r1); // Stagger start slightly
+        for _ in 1..=num_reads {
+            let value = reader1.read();
+            if tx_r1
+                .send(SimEvent::ReaderUpdate(0, format!("{}", value)))
+                .is_err()
+            {
+                return;
+            }
+            smart_sleep(reader_delay_ms, &pause_r1);
+        }
+    });
+
+    // -------------------------------------------------------------------------
+    // READER THREAD 2 (Maps to UI row index 1)
+    // -------------------------------------------------------------------------
+    let tx_r2 = tx.clone();
+    let pause_r2 = pause_flag.clone();
+    thread::spawn(move || {
+        smart_sleep(100, &pause_r2); // Stagger start slightly
+        for _ in 1..=num_reads {
+            let value = reader2.read();
+            if tx_r2
+                .send(SimEvent::ReaderUpdate(1, format!("{}", value)))
+                .is_err()
+            {
+                return;
+            }
+            smart_sleep(reader_delay_ms, &pause_r2);
+        }
+    });
 }
