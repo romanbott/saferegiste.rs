@@ -1,4 +1,7 @@
+// src/ui.rs
+
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -7,20 +10,30 @@ use ratatui::{
 
 use crate::app::{App, AppState, RegisterType};
 
-pub fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
+pub fn draw_ui(f: &mut Frame, app: &mut App) {
     match app.state {
         AppState::Menu => {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .margin(2)
-                .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
+                // Increased Length to 7 to fit our new parameter controls
+                .constraints([Constraint::Length(7), Constraint::Min(0)].as_ref())
                 .split(f.size());
 
-            let title = Paragraph::new(format!(
-                "Select Register | Readers: {} (Left/Right to change) | 'q' to quit",
-                app.num_readers
-            ))
-            .block(Block::default().borders(Borders::ALL).title("Menu"));
+            let menu_text = format!(
+                "Select Register | Enter to Start | 'q' to quit\n\
+                 Readers       (Left/Right): {}\n\
+                 Reads per run   ('n'/'N') : {}\n\
+                 Writer Delay    ('w'/'W') : {}ms\n\
+                 Reader Delay    ('r'/'R') : {}ms",
+                app.num_readers, app.num_reads, app.writer_delay_ms, app.reader_delay_ms
+            );
+
+            let title = Paragraph::new(menu_text).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Configuration"),
+            );
             f.render_widget(title, chunks[0]);
 
             let items: Vec<ListItem> = app
@@ -55,15 +68,14 @@ pub fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
                 .margin(2)
                 .constraints(
                     [
-                        Constraint::Length(3),  // Status
-                        Constraint::Length(10), // Writer Pane
-                        Constraint::Min(0),     // Readers Panes Area
+                        Constraint::Length(3),
+                        Constraint::Length(10),
+                        Constraint::Min(0),
                     ]
                     .as_ref(),
                 )
                 .split(f.size());
 
-            // 1. Status Bar (Dynamic color based on pause state)
             let status_style = if app.is_paused {
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
             } else {
@@ -82,7 +94,6 @@ pub fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
             );
             f.render_widget(status, main_chunks[0]);
 
-            // 2. Writer Pane
             let writer_items: Vec<ListItem> = app
                 .writer_logs
                 .iter()
@@ -101,7 +112,6 @@ pub fn draw_ui(f: &mut ratatui::Frame, app: &mut App) {
             );
             f.render_widget(writer_list, main_chunks[1]);
 
-            // 3. Reader Panes
             let reader_constraints: Vec<Constraint> = (0..app.num_readers)
                 .map(|_| Constraint::Ratio(1, app.num_readers as u32))
                 .collect();

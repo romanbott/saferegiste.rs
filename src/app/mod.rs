@@ -1,23 +1,17 @@
 use std::{
-    error::Error,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver},
     },
     thread,
-    time::Duration,
 };
 
-use crossterm::event::{self, Event, KeyCode};
-use ratatui::{Terminal, prelude::Backend, widgets::ListState};
-
-use crate::app::simulation::run_simulation;
+use crossterm::event::KeyCode;
+use ratatui::widgets::ListState;
 
 mod simulation;
-mod ui;
-
-use ui::draw_ui;
+pub mod ui;
 
 enum SimEvent {
     WriterUpdate(String),
@@ -39,21 +33,23 @@ enum RegisterType {
 }
 
 pub struct App {
-    state: AppState,
-    items: Vec<RegisterType>,
-    list_state: ListState,
-    rx: Option<Receiver<SimEvent>>,
+    pub state: AppState,
+    pub items: Vec<RegisterType>,
+    pub list_state: ListState,
+    pub rx: Option<Receiver<SimEvent>>,
 
-    writer_logs: Vec<String>,
-    reader_logs: Vec<Vec<String>>,
-    status_msg: String,
+    pub writer_logs: Vec<String>,
+    pub reader_logs: Vec<Vec<String>>,
+    pub status_msg: String,
 
-    num_readers: usize,
-    delay_ms: u64,
+    // Simulation Parameters
+    pub num_readers: usize,
+    pub num_reads: usize,
+    pub writer_delay_ms: u64,
+    pub reader_delay_ms: u64,
 
-    // Pause state tracking
-    is_paused: bool,
-    pause_flag: Option<Arc<AtomicBool>>,
+    pub is_paused: bool,
+    pub pause_flag: Option<Arc<AtomicBool>>,
 }
 
 impl App {
@@ -74,10 +70,98 @@ impl App {
             reader_logs: Vec::new(),
             status_msg: String::new(),
             num_readers: 3,
-            delay_ms: 500,
+            num_reads: 15,
+            writer_delay_ms: 500,
+            reader_delay_ms: 500,
             is_paused: false,
             pause_flag: None,
         }
+    }
+
+    pub fn process_events(&mut self) {
+        if let Some(rx) = &self.rx {
+            while let Ok(event) = rx.try_recv() {
+                match event {
+                    SimEvent::WriterUpdate(val) => {
+                        self.writer_logs.push(val);
+                        if self.writer_logs.len() > 100 {
+                            self.writer_logs.remove(0);
+                        }
+                    }
+                    SimEvent::ReaderUpdate(id, val) => {
+                        if id < self.reader_logs.len() {
+                            self.reader_logs[id].push(val);
+                            if self.reader_logs[id].len() > 100 {
+                                self.reader_logs[id].remove(0);
+                            }
+                        }
+                    }
+                    SimEvent::Status(msg) => self.status_msg = msg,
+                }
+            }
+        }
+    }
+
+    pub fn handle_input(&mut self, key: KeyCode) -> bool {
+        match self.state {
+            AppState::Menu => match key {
+                KeyCode::Char('q') => return true,
+                KeyCode::Down | KeyCode::Char('j') => self.next(),
+                KeyCode::Up | KeyCode::Char('k') => self.previous(),
+                KeyCode::Enter => self.start_simulation(),
+
+                // Hotkeys for Parameters
+                KeyCode::Right => self.num_readers += 1,
+                KeyCode::Left => {
+                    if self.num_readers > 1 {
+                        self.num_readers -= 1;
+                    }
+                }
+                KeyCode::Char('n') => {
+                    if self.num_reads > 1 {
+                        self.num_reads -= 1;
+                    }
+                }
+                KeyCode::Char('N') => self.num_reads += 1,
+                KeyCode::Char('w') => {
+                    if self.writer_delay_ms > 100 {
+                        self.writer_delay_ms -= 100;
+                    }
+                }
+                KeyCode::Char('W') => self.writer_delay_ms += 100,
+                KeyCode::Char('r') => {
+                    if self.reader_delay_ms > 100 {
+                        self.reader_delay_ms -= 100;
+                    }
+                }
+                KeyCode::Char('R') => self.reader_delay_ms += 100,
+                _ => {}
+            },
+            AppState::Running => match key {
+                KeyCode::Char('q') | KeyCode::Esc => {
+                    self.state = AppState::Menu;
+                    self.rx = None;
+                    if let Some(flag) = &self.pause_flag {
+                        flag.store(false, Ordering::SeqCst);
+                    }
+                }
+                KeyCode::Char('p') | KeyCode::Char(' ') => {
+                    self.is_paused = !self.is_paused;
+                    if let Some(flag) = &self.pause_flag {
+                        flag.store(self.is_paused, Ordering::SeqCst);
+                    }
+                    if !self.status_msg.contains("FINISHED") {
+                        self.status_msg = if self.is_paused {
+                            "Simulation PAUSED".to_string()
+                        } else {
+                            "Simulation RUNNING".to_string()
+                        };
+                    }
+                }
+                _ => {}
+            },
+        }
+        false
     }
 
     fn next(&mut self) {
@@ -123,89 +207,20 @@ impl App {
 
         let selected = self.items[self.list_state.selected().unwrap()];
         let num_readers = self.num_readers;
-        let delay = self.delay_ms;
+        let num_reads = self.num_reads;
+        let writer_delay_ms = self.writer_delay_ms;
+        let reader_delay_ms = self.reader_delay_ms;
 
         thread::spawn(move || {
-            run_simulation(selected, num_readers, delay, tx, pause_flag);
+            simulation::run_simulation(
+                selected,
+                num_readers,
+                num_reads,
+                writer_delay_ms,
+                reader_delay_ms,
+                tx,
+                pause_flag,
+            );
         });
-    }
-}
-
-pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<(), Box<dyn Error>>
-where
-    <B as Backend>::Error: 'static,
-{
-    loop {
-        if let Some(rx) = &app.rx {
-            while let Ok(event) = rx.try_recv() {
-                match event {
-                    SimEvent::WriterUpdate(val) => {
-                        app.writer_logs.push(val);
-                        if app.writer_logs.len() > 100 {
-                            app.writer_logs.remove(0);
-                        }
-                    }
-                    SimEvent::ReaderUpdate(id, val) => {
-                        if id < app.reader_logs.len() {
-                            app.reader_logs[id].push(val);
-                            if app.reader_logs[id].len() > 100 {
-                                app.reader_logs[id].remove(0);
-                            }
-                        }
-                    }
-                    SimEvent::Status(msg) => app.status_msg = msg,
-                }
-            }
-        }
-
-        terminal.draw(|f| draw_ui(f, &mut app))?;
-
-        if event::poll(Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                match app.state {
-                    AppState::Menu => match key.code {
-                        KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Down | KeyCode::Char('j') => app.next(),
-                        KeyCode::Up | KeyCode::Char('k') => app.previous(),
-                        KeyCode::Enter => app.start_simulation(),
-                        KeyCode::Right => app.num_readers += 1,
-                        KeyCode::Left => {
-                            if app.num_readers > 1 {
-                                app.num_readers -= 1;
-                            }
-                        }
-                        _ => {}
-                    },
-                    AppState::Running => match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => {
-                            app.state = AppState::Menu;
-                            app.rx = None;
-
-                            // Unpause strictly to allow threads to close out naturally
-                            // if they are sleeping (prevents orphaned paused threads)
-                            if let Some(flag) = &app.pause_flag {
-                                flag.store(false, Ordering::SeqCst);
-                            }
-                        }
-                        // Handle Pause/Play Hotkeys
-                        KeyCode::Char('p') | KeyCode::Char(' ') => {
-                            app.is_paused = !app.is_paused;
-                            if let Some(flag) = &app.pause_flag {
-                                flag.store(app.is_paused, Ordering::SeqCst);
-                            }
-
-                            if !app.status_msg.contains("FINISHED") {
-                                app.status_msg = if app.is_paused {
-                                    "Simulation PAUSED".to_string()
-                                } else {
-                                    "Simulation RUNNING".to_string()
-                                };
-                            }
-                        }
-                        _ => {}
-                    },
-                }
-            }
-        }
     }
 }
