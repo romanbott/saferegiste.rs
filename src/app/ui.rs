@@ -17,7 +17,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                 .direction(Direction::Vertical)
                 .margin(2)
                 // Increased to Length(8) to fit the Flicker Mode text
-                .constraints([Constraint::Length(8), Constraint::Min(0)].as_ref())
+                .constraints([Constraint::Length(9), Constraint::Min(0)].as_ref())
                 .split(f.area());
 
             let mode_str = match app.flicker_mode {
@@ -26,14 +26,26 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                 _ => "Slow",
             };
 
+            let seq_str = match app.sequence_idx {
+                0 => "Alternating/Incresing",
+                1 => "Paired",
+                _ => "Block",
+            };
+
             let menu_text = format!(
                 "Select Register | Enter to Start | 'q' to quit\n\
                  Readers       (Left/Right): {}\n\
                  Reads per run   ('n'/'N') : {}\n\
                  Writer Delay    ('w'/'W') : {}ms\n\
                  Reader Delay    ('r'/'R') : {}ms\n\
-                 Flicker Mode      ('f')   : {}",
-                app.num_readers, app.num_reads, app.writer_delay_ms, app.reader_delay_ms, mode_str
+                 Flicker Mode      ('f')   : {}\n\
+                 Sequence          ('s')   : {}",
+                app.num_readers,
+                app.num_reads,
+                app.writer_delay_ms,
+                app.reader_delay_ms,
+                mode_str,
+                seq_str,
             );
 
             let title = Paragraph::new(menu_text).block(

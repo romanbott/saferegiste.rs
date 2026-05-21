@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::app::{RegisterType, SimEvent};
+use crate::app::{BOOLEAN_SEQUENCES, NUMERIC_SEQUENCES, RegisterType, SimEvent};
 
 // Import the registers from your own library
 use registers::{m_regular, safe_mrsw, safe_registers::safe_boolean_srsw};
@@ -34,18 +34,25 @@ pub fn run_simulation(
     num_reads: usize,
     writer_delay_ms: u64,
     reader_delay_ms: u64,
+    seq_idx: usize,
     tx: Sender<SimEvent>,
     pause_flag: Arc<AtomicBool>,
 ) {
     match reg_type {
-        RegisterType::SafeSRSW => {
-            simulate_safe_srsw(num_reads, writer_delay_ms, reader_delay_ms, tx, pause_flag)
-        }
+        RegisterType::SafeSRSW => simulate_safe_srsw(
+            num_reads,
+            writer_delay_ms,
+            reader_delay_ms,
+            seq_idx,
+            tx,
+            pause_flag,
+        ),
         RegisterType::SafeMRSW => simulate_safe_mrsw(
             num_readers,
             num_reads,
             writer_delay_ms,
             reader_delay_ms,
+            seq_idx,
             tx,
             pause_flag,
         ),
@@ -55,6 +62,7 @@ pub fn run_simulation(
             num_reads,
             writer_delay_ms,
             reader_delay_ms,
+            seq_idx,
             tx,
             pause_flag,
         ),
@@ -64,6 +72,7 @@ pub fn run_simulation(
             num_reads,
             writer_delay_ms,
             reader_delay_ms,
+            seq_idx,
             tx,
             pause_flag,
         ),
@@ -77,6 +86,7 @@ fn simulate_safe_srsw(
     num_reads: usize,
     writer_delay_ms: u64,
     reader_delay_ms: u64,
+    seq_idx: usize,
     tx: Sender<SimEvent>,
     pause_flag: Arc<AtomicBool>,
 ) {
@@ -85,21 +95,21 @@ fn simulate_safe_srsw(
     let tx_writer = tx.clone();
     let writer_pause = pause_flag.clone();
 
+    let sequence = BOOLEAN_SEQUENCES[seq_idx].to_vec();
+
     thread::spawn(move || {
-        let mut current_val = false;
-        for _ in 1..=10 {
+        for val in sequence.into_iter().cycle() {
             smart_sleep(0, &writer_pause);
-            current_val = !current_val;
 
             if tx_writer
-                .send(SimEvent::WriterUpdate(format!("Writing: {}", current_val)))
+                .send(SimEvent::WriterUpdate(format!("Writing: {}", val)))
                 .is_err()
             {
                 return;
             }
-            writer.write(current_val);
+            writer.write(val);
             if tx_writer
-                .send(SimEvent::WriterUpdate(format!("Idle: {}", current_val)))
+                .send(SimEvent::WriterUpdate(format!("Idle: {}", val)))
                 .is_err()
             {
                 return;
@@ -133,6 +143,7 @@ fn simulate_safe_mrsw(
     num_reads: usize,
     writer_delay_ms: u64,
     reader_delay_ms: u64,
+    seq_idx: usize,
     tx: Sender<SimEvent>,
     pause_flag: Arc<AtomicBool>,
 ) {
@@ -145,21 +156,21 @@ fn simulate_safe_mrsw(
     let tx_writer = tx.clone();
     let writer_pause = pause_flag.clone();
 
+    let sequence = BOOLEAN_SEQUENCES[seq_idx].to_vec();
+
     thread::spawn(move || {
-        let mut current_val = false;
-        for _ in 1..=10 {
+        for val in sequence.into_iter().cycle() {
             smart_sleep(0, &writer_pause);
-            current_val = !current_val;
 
             if tx_writer
-                .send(SimEvent::WriterUpdate(format!("Writing: {}", current_val)))
+                .send(SimEvent::WriterUpdate(format!("Writing: {}", val)))
                 .is_err()
             {
                 return;
             }
-            safe_reg.write(current_val);
+            safe_reg.write(val);
             if tx_writer
-                .send(SimEvent::WriterUpdate(format!("Idle: {}", current_val)))
+                .send(SimEvent::WriterUpdate(format!("Idle: {}", val)))
                 .is_err()
             {
                 return;
@@ -195,6 +206,7 @@ fn simulate_regular(
     num_reads: usize,
     writer_delay_ms: u64,
     reader_delay_ms: u64,
+    seq_idx: usize,
     tx: Sender<SimEvent>,
     pause_flag: Arc<AtomicBool>,
 ) {
@@ -208,22 +220,21 @@ fn simulate_regular(
     let tx_writer = tx.clone();
     let writer_pause = pause_flag.clone();
 
-    // Writer Thread
+    let sequence = BOOLEAN_SEQUENCES[seq_idx].to_vec();
+
     thread::spawn(move || {
-        let mut current_val = false;
-        for _ in 1..=10 {
+        for val in sequence.into_iter().cycle() {
             smart_sleep(0, &writer_pause);
-            current_val = !current_val;
 
             if tx_writer
-                .send(SimEvent::WriterUpdate(format!("Writing: {}", current_val)))
+                .send(SimEvent::WriterUpdate(format!("Writing: {}", val)))
                 .is_err()
             {
                 return;
             }
-            let _ = mrsw.write(current_val);
+            let _ = mrsw.write(val);
             if tx_writer
-                .send(SimEvent::WriterUpdate(format!("Idle: {}", current_val)))
+                .send(SimEvent::WriterUpdate(format!("Idle: {}", val)))
                 .is_err()
             {
                 return;
@@ -259,6 +270,7 @@ fn simulate_m_regular(
     num_reads: usize,
     writer_delay_ms: u64,
     reader_delay_ms: u64,
+    seq_idx: usize,
     tx: Sender<SimEvent>,
     pause_flag: Arc<AtomicBool>,
 ) {
@@ -272,10 +284,10 @@ fn simulate_m_regular(
     let tx_writer = tx.clone();
     let writer_pause = pause_flag.clone();
 
-    // Writer Thread
+    let sequence = NUMERIC_SEQUENCES[seq_idx].to_vec();
+
     thread::spawn(move || {
-        for i in 0..=(1 << 8) {
-            // Loop from 0 up to 15 inclusive
+        for i in sequence.into_iter().cycle() {
             smart_sleep(0, &writer_pause);
 
             if tx_writer
@@ -284,7 +296,7 @@ fn simulate_m_regular(
             {
                 return;
             }
-            let _ = mrsw.write(i);
+            let _ = mrsw.write(i as usize);
             if tx_writer
                 .send(SimEvent::WriterUpdate(format!("Idle: {}", i)))
                 .is_err()
