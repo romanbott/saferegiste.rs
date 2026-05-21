@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -33,14 +34,16 @@ enum RegisterType {
     AtomicSRSW,
 }
 
+const LOG_LEN: usize = 5000;
+
 pub struct App {
     pub state: AppState,
     pub items: Vec<RegisterType>,
     pub list_state: ListState,
     pub rx: Option<Receiver<SimEvent>>,
 
-    pub writer_logs: Vec<String>,
-    pub reader_logs: Vec<Vec<String>>,
+    pub writer_logs: VecDeque<String>,
+    pub reader_logs: Vec<VecDeque<String>>,
     pub status_msg: String,
 
     // Simulation Parameters
@@ -73,7 +76,7 @@ impl App {
             ],
             list_state,
             rx: None,
-            writer_logs: Vec::new(),
+            writer_logs: VecDeque::with_capacity(LOG_LEN),
             reader_logs: Vec::new(),
             status_msg: String::new(),
             num_readers: 3,
@@ -92,17 +95,17 @@ impl App {
             while let Ok(event) = rx.try_recv() {
                 match event {
                     SimEvent::WriterUpdate(val) => {
-                        self.writer_logs.push(val);
-                        if self.writer_logs.len() > 100 {
-                            self.writer_logs.remove(0);
+                        if self.writer_logs.len() >= LOG_LEN {
+                            self.writer_logs.pop_front();
                         }
+                        self.writer_logs.push_back(val);
                     }
                     SimEvent::ReaderUpdate(id, val) => {
                         if id < self.reader_logs.len() {
-                            self.reader_logs[id].push(val);
-                            if self.reader_logs[id].len() > 100 {
-                                self.reader_logs[id].remove(0);
+                            if self.reader_logs[id].len() >= LOG_LEN {
+                                self.reader_logs[id].pop_front();
                             }
+                            self.reader_logs[id].push_back(val);
                         }
                     }
                     SimEvent::Status(msg) => self.status_msg = msg,
@@ -233,7 +236,7 @@ impl App {
     fn start_simulation(&mut self) {
         self.state = AppState::Running;
         self.writer_logs.clear();
-        self.reader_logs = vec![Vec::new(); self.num_readers];
+        self.reader_logs = vec![VecDeque::with_capacity(LOG_LEN); self.num_readers];
         self.status_msg = String::from("Simulation RUNNING");
         self.is_paused = false;
 
