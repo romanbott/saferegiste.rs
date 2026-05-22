@@ -10,6 +10,11 @@ pub struct AtomicMRMWReaderWriter {
 
 impl AtomicMRMWReaderWriter {
     pub fn read(&mut self) -> u8 {
+        // Its enough to compare on stamps, since max_by_key will consistently
+        // break ties by returning the _latest_ element with the max stamp.
+        // So this ensures the StampedValues are totally ordered.
+        // To be fully compliant with Herlihy and Shavit algorithm
+        // we could reverse the readers before searching for the max.
         let most_recent = self
             .readers
             .iter_mut()
